@@ -1,11 +1,9 @@
 {
   "name": "state-lookup",
   "version": "0.1.0",
-  "description": "Lambda function code for state-lookup (lat/lng -> state/province + distance). Boundary data ships in a layer, not here.",
+  "description": "Lambda function code for state-lookup (lat/lng -> state/province + distance). Binary runtime: Flatbush index + geometry buffers. Boundary data ships in a layer.",
   "main": "index.js",
   "dependencies": {
-    "@turf/boolean-point-in-polygon": "^7.0.0",
-    "@turf/helpers": "^7.0.0",
-    "@turf/point-to-line-distance": "^7.0.0"
+    "flatbush": "^4.6.2"
   }
 }

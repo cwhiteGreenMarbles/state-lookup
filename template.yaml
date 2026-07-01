@@ -2,7 +2,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   state-lookup — resolve lat/lng to US state / Canadian province (+ distance to
-  the state border) via layered TIGER point-in-polygon. No external geocoder.
+  the state border) via point-in-polygon over precreated binary TIGER artifacts.
+  No external geocoder. Cold start reads buffers only (no GeoJSON parse).
 
 # NOTE: API Gateway is intentionally NOT wired up yet (held off per request).
 # This defines the deployable function + a boundary-data layer only. The function
@@ -18,9 +19,12 @@ Globals:
     MemorySize: 1024
 
 Resources:
-  # Boundary GeoJSON ships in a versioned layer, NOT the function zip.
-  #   layer/geo/states-coarse.geojson  -> /opt/geo/states-coarse.geojson
-  #   layer/geo/states-full.geojson    -> /opt/geo/states-full.geojson
+  # Precreated binary boundary artifacts ship in a versioned layer, NOT the function zip.
+  # Runtime reads ONLY these (mounted at /opt/geo):
+  #   geom.f64  geom-meta.json  edges.flatbush  edges-start.u32  edges-cid.u16
+  # The *.geojson files under layer/geo are build-time SOURCE (and the test-only
+  # reference resolver); they are not needed at runtime and can be excluded from
+  # the packaged layer to keep it lean.
   StateLookupBoundariesLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -34,15 +38,15 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: state-lookup
-      CodeUri: src/               # index.js + state-resolver.js + node_modules (turf) only
+      CodeUri: src/               # index.js + binary-resolver.js + node_modules (flatbush only)
       Handler: index.handler
       MemorySize: 1024
       EphemeralStorage:
         Size: 512
       Environment:
         Variables:
-          GEO_DATA_DIR: /opt/geo  # boundary files mounted from the layer
-          GEO_TRUST_KM: '3'       # > measured 1.28 km max coarse-vs-full miss
+          GEO_DATA_DIR: /opt/geo  # binary artifacts mounted from the layer
+          GEO_TRUST_KM: '3'       # distance (km) under which `nearBorder` is flagged
       Layers:
         - !Ref StateLookupBoundariesLayer
       # Events:                   # <-- gateway deferred; add when exposing over HTTP

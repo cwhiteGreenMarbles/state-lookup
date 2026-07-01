@@ -2,7 +2,7 @@
 //   npm start   ->   curl 'http://localhost:8080/geo/state?lat=39.0997&lng=-94.5786'
 const http = require('http');
 const url = require('url');
-const { resolveState } = require('./src/state-resolver');
+const { resolveState } = require('./src/binary-resolver');
 
 const PORT = process.env.PORT || 8080;
 http.createServer((req, res) => {

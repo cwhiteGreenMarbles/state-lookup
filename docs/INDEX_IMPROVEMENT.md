@@ -1,5 +1,13 @@
 # Index improvement — fast distance-to-border via an edge R-tree
 
+> **Status: IMPLEMENTED (precreated).** This is now the runtime path, using
+> **Flatbush** (static, serializable) rather than rbush, precomputed at build time
+> by `build-binary.js` and loaded by `src/binary-resolver.js`. The service no longer
+> tiers coarse→fine. Measured: near-border distance dropped from ~35 ms (up to
+> 170 ms in Texas) to **~0.1–0.2 ms, flat across state size**; cold start ~20 ms.
+> The rbush/runtime-build design below is kept for context; the precreated-Flatbush
+> variant is what shipped.
+
 ## Motivation
 
 Two operations, very different costs:

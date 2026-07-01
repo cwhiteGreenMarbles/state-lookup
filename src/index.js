@@ -1,14 +1,17 @@
 /*
  * index.js — Lambda entrypoint for the state-lookup service.
  *
- * Two invocation shapes are supported so this works before an API Gateway is wired up:
+ * Runtime path is the precreated-binary resolver: cold start reads buffers only
+ * (no GeoJSON parse, no index build), containment is an exact even-odd ray-cast
+ * over the geometry buffer, and distance uses the precreated Flatbush index.
+ *
+ * Two invocation shapes so this works before an API Gateway is wired up:
  *   1. Direct invoke: { "lat": 39.0997, "lng": -94.5786 }
  *   2. API Gateway proxy (later): event.queryStringParameters = { lat, lng }
  *
- * The core is exported from ./state-resolver so getNearestLocations (or any other
- * handler) can require it and call resolveState(lat,lng) IN-PROCESS, with no HTTP hop.
+ * `resolveState` is re-exported for IN-PROCESS use (e.g. getNearestLocations).
  */
-const { resolveState } = require('./state-resolver');
+const { resolveState } = require('./binary-resolver');
 
 exports.handler = async (event = {}) => {
   const src = event.queryStringParameters || event; // gateway proxy OR direct invoke

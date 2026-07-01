@@ -4,6 +4,13 @@ src/node_modules/
 # Large, derived, or source-input geo artifacts — regenerate with `npm run build`.
 layer/geo/states-full.geojson
 layer/geo/_raw_*.geojson
+
+# Precreated binary artifacts — regenerate with `npm run build:binary`.
+layer/geo/geom.f64
+layer/geo/geom-meta.json
+layer/geo/edges.flatbush
+layer/geo/edges-start.u32
+layer/geo/edges-cid.u16
 tl_*.shp
 tl_*.dbf
 tl_*.shx

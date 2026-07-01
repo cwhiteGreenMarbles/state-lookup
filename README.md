@@ -7,23 +7,33 @@ geocoder. Point-in-polygon against US Census **TIGER** boundaries.
 Built to replace the high-volume client-side Google reverse-geocode whose only
 purpose was to derive the `US-XX` state code for `getNearestLocations`
 (`userController.js` does `location.slice(-2)` to pick the per-state
-`Homes.<STATE>` / `residential_data_<state>` collections).
+`Homes.<STATE>` / `residential_data_<state>` collections). See `docs/PROBLEM.md`
+and `docs/CALLERS.md`.
 
-## How it answers a point (layered / coarse-to-fine)
+## How it answers a point (single binary path)
 
-1. **Coarse tier** (`data/states-coarse.geojson`, DP-simplified, ~0.19 MB) — a
-   bbox reject + ray-cast gives the state, and a point-to-border distance.
-2. If that distance is **> `GEO_TRUST_KM` (default 3 km)** the coarse answer is
-   returned as-is. This is provably safe: the max coarse-vs-full disagreement
-   measured over 61k random points was **1.28 km**.
-3. Otherwise (near a border, ~2–3% of points) it **escalates to the full-res
-   tier** (`data/states-full.geojson`, ~21 MB) for the authoritative state code
-   and a precise distance.
+The runtime uses **precreated binary artifacts** — there is no GeoJSON parse and
+no index build at cold start, and no coarse/fine tiering:
+
+1. **Containment** — an exact even-odd ray-cast over the geometry buffer
+   (`geom.f64`) gives the authoritative state. ~tens of µs.
+2. **Distance to border** — a precreated **Flatbush** R-tree over every border
+   *segment* (`edges.flatbush`) finds the nearest segment. Flat ~0.1–0.2 ms
+   regardless of state size (it never walks a whole state's border).
 
 ```
 resolveState(39.0997, -94.5786)
-// { code: 'US-MO', country: 'US', distanceKm: 2.46, tier: 'fine', nearBorder: true, escalated: true }
+// { code: 'US-MO', country: 'US', distanceKm: 2.47, tier: 'binary', nearBorder: true, escalated: false }
 ```
+
+Measured: containment matches the GeoJSON+turf ground truth on 200k random points
+(**0 mismatches**); distance within **60 m p99**; cold-start load **~20 ms** (vs
+~300 ms to parse the 21 MB GeoJSON); per call **0.04–0.19 ms**.
+
+> The coarse→fine tiering was an earlier design; the binary index makes fine work
+> cheap and flat, so the service collapses to one path. `GEO_TRUST_KM` now only
+> sets the `nearBorder` label. (Coarse survives solely as an optional *client-side*
+> bundle — see `docs/INDEX_IMPROVEMENT.md`.)
 
 ## Layout
 
@@ -31,52 +41,65 @@ resolveState(39.0997, -94.5786)
 state-lookup/
   src/                     # <-- the deployable function (CodeUri: src/)
     index.js               # Lambda handler + re-exports resolveState for in-process use
-    state-resolver.js      # runtime core: resolveState(lat,lng) + tier caches
-    package.json           # turf deps (installed into src/node_modules on deploy)
-  layer/                   # <-- SAM LayerVersion (ContentUri: layer/)
-    geo/
-      states-coarse.geojson  # committed (~0.19 MB)
-      states-full.geojson    # git-ignored; regenerate via `npm run build`
-  build-boundaries.js      # one-off: TIGER .shp -> layer/geo/states-{full,coarse}.geojson
+    binary-resolver.js     # runtime core: containment ray-cast + Flatbush distance
+    package.json           # runtime dep: flatbush ONLY
+  layer/geo/               # <-- SAM LayerVersion (ContentUri: layer/), mounts at /opt/geo
+    geom.f64               # runtime: all ring coords (Float64)           [git-ignored]
+    geom-meta.json         # runtime: codes + per-feature bbox/ring index [git-ignored]
+    edges.flatbush         # runtime: precreated Flatbush segment index    [git-ignored]
+    edges-start.u32        # runtime: per-segment start point index        [git-ignored]
+    edges-cid.u16          # runtime: per-segment state index              [git-ignored]
+    states-coarse.geojson  # build-source / client-bundle option (committed, ~0.19 MB)
+    states-full.geojson    # build-source (git-ignored, ~21 MB)
+  build-boundaries.js      # TIGER .shp  -> states-{full,coarse}.geojson
+  build-binary.js          # states-full.geojson -> the binary artifacts above
+  reference/
+    state-resolver.js      # TEST-ONLY GeoJSON+turf resolver (ground truth); NOT deployed
+  validate-binary.js       # proves binary == reference + measures cold start
   local-server.js          # run locally without AWS (`npm start`)
   test.js                  # smoke test + timing (`npm test`)
   template.yaml            # SAM function + boundary layer (API Gateway deferred)
 ```
 
-## Data storage (current)
+## Data storage
 
-Boundaries are **static GeoJSON files** read once per warm container with
-`fs.readFileSync` + `JSON.parse`, then held in a **module-scope cache**
-(`src/state-resolver.js`). The data directory is resolved in this order:
-`GEO_DATA_DIR` → `../layer/geo` (local dev) → `./data` (legacy).
+The runtime reads **precreated binary buffers** once per warm container
+(`fs.readFileSync` → typed-array views; `Flatbush.from` is O(1)), cached at module
+scope. Data dir resolves via `GEO_DATA_DIR` → `../layer/geo` (local) → `./data`.
 
-- **Coarse** (~0.19 MB) is committed at `layer/geo/states-coarse.geojson`.
-- **Full-res** (~21 MB) is git-ignored and regenerated by `npm run build` from the
-  TIGER shapefile (`tl_2023_us_state.shp`, also git-ignored).
-- Both files ship in a **Lambda layer** (`ContentUri: layer/`), mounted at
-  `/opt/geo`; the function sets `GEO_DATA_DIR=/opt/geo`. This keeps the 21 MB
-  full-res file **out of the function zip** — the function bundles only code +
-  turf. (S3-fetch-once-then-cache remains an alternative if you'd rather the data
-  update independently of layer versions.)
+- Binary artifacts (`geom.f64`, `geom-meta.json`, `edges.*`) are **git-ignored**
+  and regenerated by `npm run build:binary`. They are the *only* files the runtime
+  needs; ship just these in the layer.
+- The `*.geojson` are **build-time source** (and the test-only reference resolver /
+  optional client bundle), not runtime assets.
+- The function zip bundles only `index.js`, `binary-resolver.js`, and `flatbush`.
 
 ## Build
 
 ```
-# 1. get the authoritative source (public domain)
+# 1. authoritative source (public domain)
 curl -O https://www2.census.gov/geo/tiger/TIGER2023/STATE/tl_2023_us_state.zip
 unzip tl_2023_us_state.zip
-# 2. install function deps + generate both tiers
-npm run install:fn                 # installs turf into src/node_modules
-npm run build                      # -> layer/geo/states-{full,coarse}.geojson
-npm test
+
+# 2. deps
+npm run install:fn      # flatbush into src/node_modules (runtime)
+npm install             # turf into ./node_modules (test-only reference + validation)
+
+# 3. generate GeoJSON tiers, then the binary runtime artifacts
+npm run build           # TIGER .shp -> layer/geo/states-{full,coarse}.geojson
+npm run build:binary    # states-full.geojson -> layer/geo/{geom.f64,edges.*,...}
+
+# 4. verify
+npm test                # binary smoke test + timing
+npm run validate:binary # equivalence vs reference + cold-start numbers
 ```
 
 ## TODO
 
-- **Canada:** merge Statistics Canada provincial boundaries (`country:"CA"`) so the
-  `CA…` -> `residential_data_CAN` path is covered. Hook is marked in `build-boundaries.js`.
+- **Canada:** add Statistics Canada provinces (`country:"CA"`), then rebuild the
+  binary artifacts. See `docs/ADDING_CANADA.md` (build hook in `build-boundaries.js`).
 - **Format parity:** confirm the emitted `US-XX` delimiter matches
   `globalService.extractLocation` before using as a drop-in for `slice(-2)` callers.
-- **Fast fine-distance at volume:** add an `rbush` edge-index over full-res
-  segments (turns the ~35 ms near-border distance into microseconds).
-- **API Gateway:** add the `Events: Api` block when exposing over HTTP.
+- **API Gateway:** add the `Events: Api` block in `template.yaml` when exposing over HTTP.
+- **Layer packaging:** exclude the `*.geojson` from the packaged layer (runtime needs
+  only the binary artifacts).
