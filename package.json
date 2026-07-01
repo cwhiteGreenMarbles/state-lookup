@@ -2,14 +2,15 @@
   "name": "state-lookup-dev",
   "version": "0.1.0",
   "private": true,
-  "description": "Dev tooling + build for the state-lookup lambda. Runtime code lives in src/ (binary path); boundary data in layer/geo/; the GeoJSON+turf resolver in reference/ is a test-only ground truth.",
+  "description": "Dev tooling + build for the state-lookup lambda. Runtime code lives in src/ (binary path); runtime binary artifacts in layer/geo/, GeoJSON build sources in data/; the GeoJSON+turf resolver in reference/ is a test-only ground truth.",
   "scripts": {
-    "build": "node build-boundaries.js --shp ./tl_2023_us_state.shp --out ./layer/geo --coarse 1",
+    "build": "node build-boundaries.js --shp ./tl_2025_us_state.shp --out ./data --coarse 1",
     "build:binary": "node build-binary.js",
     "install:fn": "npm --prefix src install",
     "test": "node test.js",
     "validate:binary": "node validate-binary.js",
-    "start": "node local-server.js"
+    "start": "node local-server.js",
+    "refresh-data": "./refresh-data.sh"
   },
   "devDependencies": {
     "@turf/boolean-point-in-polygon": "^7.0.0",

@@ -3,7 +3,7 @@
  * build-binary.js — precompute the binary runtime artifacts so cold start reads
  * buffers instead of parsing the 21 MB GeoJSON / building an index.
  *
- * Reads:  layer/geo/states-full.geojson
+ * Reads:  data/states-full.geojson (build source)
  * Writes (into layer/geo/):
  *   geom.f64          Float64Array of ALL ring coords, interleaved [x0,y0,x1,y1,...]
  *   geom-meta.json    { codes:[...], features:[{ c, bbox, rings:[[startPt,count],...] }] }
@@ -19,8 +19,10 @@ const path = require('path');
 const _fb = require(require.resolve('flatbush', { paths: [path.join(__dirname, 'src')] }));
 const Flatbush = _fb.default || _fb; // v4 is ESM -> constructor under .default when required from CJS
 
-const DATA = path.join(__dirname, 'layer', 'geo');
-const gj = JSON.parse(fs.readFileSync(path.join(DATA, 'states-full.geojson'), 'utf8'));
+const SRC = path.join(__dirname, 'data');          // GeoJSON build sources (NOT shipped)
+const DATA = path.join(__dirname, 'layer', 'geo'); // runtime binary artifacts (the layer)
+fs.mkdirSync(DATA, { recursive: true });
+const gj = JSON.parse(fs.readFileSync(path.join(SRC, 'states-full.geojson'), 'utf8'));
 
 function bboxOf(coords) {
   let a = 180, b = 90, c = -180, d = -90;

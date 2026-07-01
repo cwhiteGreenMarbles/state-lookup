@@ -4,16 +4,16 @@
  *
  * Turns a US Census TIGER state shapefile into two pre-bboxed GeoJSON tiers
  * consumed by src/state-resolver.js (shipped in the Lambda layer):
- *    layer/geo/states-full.geojson    full-res (authoritative, ~21 MB)
- *    layer/geo/states-coarse.geojson  DP-simplified (~180 KB at 1%)
+ *    data/states-full.geojson    full-res (authoritative, ~21 MB)
+ *    data/states-coarse.geojson  DP-simplified (~180 KB at 1%)
  *
  * Usage:
- *    node build-boundaries.js --shp ./tl_2023_us_state.shp --out ./layer/geo --coarse 1
+ *    node build-boundaries.js --shp ./tl_2025_us_state.shp --out ./data --coarse 1
  *
  * Requires `npx mapshaper` at build time only (never at runtime).
  *
  * Source data (authoritative, public domain):
- *    US states: https://www2.census.gov/geo/tiger/TIGER2023/STATE/tl_2023_us_state.zip
+ *    US states: https://www2.census.gov/geo/tiger/TIGER2025/STATE/tl_2025_us_state.zip
  *    Canada (optional, for the CA-> residential_data_CAN path): Statistics Canada
  *      provincial boundaries — merge in as a second input with country:"CA" (see TODO below).
  */
@@ -22,8 +22,8 @@ const fs = require('fs');
 const path = require('path');
 
 const arg = (name, def) => { const i = process.argv.indexOf('--' + name); return i >= 0 ? process.argv[i + 1] : def; };
-const SHP = arg('shp', './tl_2023_us_state.shp');
-const OUT = arg('out', './layer/geo');
+const SHP = arg('shp', './tl_2025_us_state.shp');
+const OUT = arg('out', './data');
 const COARSE_PCT = arg('coarse', '1');   // Douglas-Peucker retention % for the coarse tier
 
 fs.mkdirSync(OUT, { recursive: true });

@@ -9,7 +9,7 @@
  * >3 km from a border is guaranteed to be in the same state at full resolution.
  *
  * No external geocoder / no network. Data files are produced by build-boundaries.js
- * and shipped in a Lambda layer (mounted at /opt/geo -> GEO_DATA_DIR).
+ * These GeoJSONs are BUILD SOURCES in data/ (not shipped in the layer).
  */
 const fs = require('fs');
 const path = require('path');
@@ -19,11 +19,11 @@ const { point, lineString } = require('@turf/helpers');
 
 // Resolve the boundary-data directory across environments:
 //   - Lambda:   GEO_DATA_DIR=/opt/geo (layer mount)
-//   - local dev: ../layer/geo (repo layout)
+//   - local dev: ../data (repo layout; GeoJSON build sources)
 //   - fallback:  ./data (legacy bundled-in-function)
 const CANDIDATES = [
   process.env.GEO_DATA_DIR,
-  path.join(__dirname, '..', 'layer', 'geo'),
+  path.join(__dirname, '..', 'data'),
   path.join(__dirname, 'data'),
 ].filter(Boolean);
 const DATA_DIR = CANDIDATES.find(d => { try { return fs.existsSync(path.join(d, 'states-coarse.geojson')); } catch (_) { return false; } }) || CANDIDATES[0];

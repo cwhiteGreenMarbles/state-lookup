@@ -20,11 +20,9 @@ Globals:
 
 Resources:
   # Precreated binary boundary artifacts ship in a versioned layer, NOT the function zip.
-  # Runtime reads ONLY these (mounted at /opt/geo):
+  # layer/ contains ONLY what the runtime reads (mounted at /opt/geo):
   #   geom.f64  geom-meta.json  edges.flatbush  edges-start.u32  edges-cid.u16
-  # The *.geojson files under layer/geo are build-time SOURCE (and the test-only
-  # reference resolver); they are not needed at runtime and can be excluded from
-  # the packaged layer to keep it lean.
+  # GeoJSON build sources live in data/ (outside the layer) and are never deployed.
   StateLookupBoundariesLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:

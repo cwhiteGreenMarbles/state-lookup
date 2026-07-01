@@ -61,10 +61,12 @@ state-lookup/
     edges.flatbush         # runtime: precreated Flatbush segment index    [git-ignored]
     edges-start.u32        # runtime: per-segment start point index        [git-ignored]
     edges-cid.u16          # runtime: per-segment state index              [git-ignored]
-    states-coarse.geojson  # build-source / client-bundle option (committed, ~0.19 MB)
-    states-full.geojson    # build-source (git-ignored, ~21 MB)
-  build-boundaries.js      # TIGER .shp  -> states-{full,coarse}.geojson
-  build-binary.js          # states-full.geojson -> the binary artifacts above
+    # layer contains ONLY runtime artifacts — nothing else ships
+  data/                    # <-- GeoJSON build sources; NOT deployed
+    states-coarse.geojson  # committed (~0.19 MB); also the client-bundle option
+    states-full.geojson    # git-ignored (~21 MB); regenerate via `npm run build`
+  build-boundaries.js      # TIGER .shp  -> data/states-{full,coarse}.geojson
+  build-binary.js          # data/states-full.geojson -> layer/geo binary artifacts
   reference/
     state-resolver.js      # TEST-ONLY GeoJSON+turf resolver (ground truth); NOT deployed
   validate-binary.js       # proves binary == reference + measures cold start
@@ -90,15 +92,15 @@ scope. Data dir resolves via `GEO_DATA_DIR` → `../layer/geo` (local) → `./da
 
 ```
 # 1. authoritative source (public domain)
-curl -O https://www2.census.gov/geo/tiger/TIGER2023/STATE/tl_2023_us_state.zip
-unzip tl_2023_us_state.zip
+curl -O https://www2.census.gov/geo/tiger/TIGER2025/STATE/tl_2025_us_state.zip
+unzip tl_2025_us_state.zip
 
 # 2. deps
 npm run install:fn      # flatbush into src/node_modules (runtime)
 npm install             # turf into ./node_modules (test-only reference + validation)
 
 # 3. generate GeoJSON tiers, then the binary runtime artifacts
-npm run build           # TIGER .shp -> layer/geo/states-{full,coarse}.geojson
+npm run build           # TIGER .shp -> data/states-{full,coarse}.geojson
 npm run build:binary    # states-full.geojson -> layer/geo/{geom.f64,edges.*,...}
 
 # 4. verify
@@ -113,5 +115,3 @@ npm run validate:binary # equivalence vs reference + cold-start numbers
 - **Format parity:** confirm the emitted `US-XX` delimiter matches
   `globalService.extractLocation` before using as a drop-in for `slice(-2)` callers.
 - **API Gateway:** add the `Events: Api` block in `template.yaml` when exposing over HTTP.
-- **Layer packaging:** exclude the `*.geojson` from the packaged layer (runtime needs
-  only the binary artifacts).
