@@ -1,0 +1,12 @@
+{
+  "name": "state-lookup-dev",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dev tooling + build for the state-lookup lambda. Function code lives in src/; boundary data in layer/geo/.",
+  "scripts": {
+    "build": "node build-boundaries.js --shp ./tl_2023_us_state.shp --out ./layer/geo --coarse 1",
+    "install:fn": "npm --prefix src install",
+    "test": "node test.js",
+    "start": "node local-server.js"
+  }
+}

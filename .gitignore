@@ -1,0 +1,16 @@
+node_modules/
+src/node_modules/
+
+# Large, derived, or source-input geo artifacts — regenerate with `npm run build`.
+layer/geo/states-full.geojson
+layer/geo/_raw_*.geojson
+tl_*.shp
+tl_*.dbf
+tl_*.shx
+tl_*.prj
+tl_*.cpg
+tl_*.zip
+tl_*.xml
+*.iso.xml
+
+# layer/geo/states-coarse.geojson IS committed (small, ~0.19 MB).

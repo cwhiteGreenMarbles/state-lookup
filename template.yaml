@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  state-lookup — resolve lat/lng to US state / Canadian province (+ distance to
+  the state border) via layered TIGER point-in-polygon. No external geocoder.
+
+# NOTE: API Gateway is intentionally NOT wired up yet (held off per request).
+# This defines the deployable function + a boundary-data layer only. The function
+# can be invoked directly, or required in-process by nomo-prospect-api
+# (userController.getNearestLocations). When ready to expose over HTTP, add an
+# `Events: { Api: {...} }` block to the function (or fold both resources into the
+# root nomo-prospect-lambdas/template.yaml).
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 10
+    MemorySize: 1024
+
+Resources:
+  # Boundary GeoJSON ships in a versioned layer, NOT the function zip.
+  #   layer/geo/states-coarse.geojson  -> /opt/geo/states-coarse.geojson
+  #   layer/geo/states-full.geojson    -> /opt/geo/states-full.geojson
+  StateLookupBoundariesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: state-lookup-boundaries
+      ContentUri: layer/
+      CompatibleRuntimes: [ nodejs22.x ]
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  StateLookupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: state-lookup
+      CodeUri: src/               # index.js + state-resolver.js + node_modules (turf) only
+      Handler: index.handler
+      MemorySize: 1024
+      EphemeralStorage:
+        Size: 512
+      Environment:
+        Variables:
+          GEO_DATA_DIR: /opt/geo  # boundary files mounted from the layer
+          GEO_TRUST_KM: '3'       # > measured 1.28 km max coarse-vs-full miss
+      Layers:
+        - !Ref StateLookupBoundariesLayer
+      # Events:                   # <-- gateway deferred; add when exposing over HTTP
+      #   GetState:
+      #     Type: Api
+      #     Properties: { Path: /geo/state, Method: GET }
+
+Outputs:
+  FunctionArn:
+    Description: state-lookup function ARN (invoke directly until a gateway is added)
+    Value: !GetAtt StateLookupFunction.Arn
