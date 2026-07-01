@@ -4,6 +4,6 @@
   "description": "Lambda function code for state-lookup (lat/lng -> state/province + distance). Binary runtime: Flatbush index + geometry buffers. Boundary data ships in a layer.",
   "main": "index.js",
   "dependencies": {
-    "flatbush": "^4.6.2"
+    "flatbush": "4.6.2"
   }
 }

@@ -23,15 +23,21 @@ no index build at cold start, and no coarse/fine tiering:
 
 ```
 resolveState(39.0997, -94.5786)
-// { code: 'US-MO', country: 'US', distanceKm: 2.47, nearBorder: true }
+// { code: 'US-MO', country: 'US', distanceKm: 2.47, nearBorder: true,
+//   borderPoint: { lat: 39.099701, lng: -94.607136 }, borderWith: 'US-KS' }
 ```
 
-**Response contract:** `{ code, country, distanceKm, nearBorder }`
+**Response contract:** `{ code, country, distanceKm, nearBorder, borderPoint, borderWith }`
 - `code`/`country` are `null` offshore (point in no state/province).
 - `distanceKm` is ALWAYS the distance to the nearest border segment — for
   offshore points that is the distance to the nearest coast. It is `null` only
   if the index is empty.
 - `nearBorder` = `distanceKm <= GEO_TRUST_KM` (default 3 km).
+- `borderPoint` = the nearest `{lat,lng}` ON that border (offshore: the nearest
+  coastline point — usable for snapping stray pins to land).
+- `borderWith` = the state/province across that border (e.g. `US-KS` for a
+  Kansas City MO point). `null` means water or a non-US neighbor (Canada/Mexico,
+  until those boundaries are added to the dataset).
 - The distance search self-expands (k-doubling with a planar lower bound) so the
   geodesically nearest segment is never missed at high latitude, and re-queries
   wrapped by 360° near the antimeridian (Aleutians).
@@ -107,6 +113,17 @@ npm run build:binary    # states-full.geojson -> layer/geo/{geom.f64,edges.*,...
 npm test                # binary smoke test + timing
 npm run validate:binary # equivalence vs reference + cold-start numbers
 ```
+
+**Or all of the above in one step** (TIGER releases annually, ~September):
+
+```
+npm run refresh-data          # auto-detects the newest vintage on the Census server
+./refresh-data.sh 2025        # or force a specific vintage
+```
+
+Downloads the newest TIGER states file, rebuilds `data/` + `layer/geo/`, runs the
+smoke test and full validation, and removes superseded vintages. Afterwards review
+`git status`, bump vintage references if the year changed, commit, republish the layer.
 
 ## TODO
 

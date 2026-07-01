@@ -87,6 +87,27 @@ console.log('\n== regression assertions ==');
   const b = bin.resolveState(21.3069, -157.858);
   assert('Honolulu resolves US-HI', b.code === 'US-HI', `code=${b.code}`);
 }
+// borderPoint / borderWith
+{
+  const hav = (la1, lo1, la2, lo2) => {
+    const R = 6371, dla = (la2 - la1) * Math.PI / 180, dlo = (lo2 - lo1) * Math.PI / 180;
+    const a = Math.sin(dla / 2) ** 2 + Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) * Math.sin(dlo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  };
+  const kc = bin.resolveState(39.0997, -94.5786);
+  assert('KC MO borderWith is US-KS', kc.borderWith === 'US-KS', `borderWith=${kc.borderWith}`);
+  assert('KC borderPoint self-consistent', Math.abs(hav(39.0997, -94.5786, kc.borderPoint.lat, kc.borderPoint.lng) - kc.distanceKm) < 0.05,
+    `hav=${hav(39.0997, -94.5786, kc.borderPoint.lat, kc.borderPoint.lng).toFixed(3)} vs distanceKm=${kc.distanceKm}`);
+  const fl = bin.resolveState(25.0, -80.0);
+  assert('offshore FL borderWith is US-FL', fl.borderWith === 'US-FL', `borderWith=${fl.borderWith}`);
+  const al = bin.resolveState(51.9, -179.95);
+  assert('Aleutian borderPoint is across the dateline', al.borderPoint && al.borderPoint.lng > 170, `borderPoint=${JSON.stringify(al.borderPoint)}`);
+  // exactly ON the border (a borderPoint fed back in): must name both states
+  const on = bin.resolveState(38.756445, -82.89604); // OH/KY line
+  assert('on-the-border names both states (OH/KY)',
+    (on.code === 'US-KY' && on.borderWith === 'US-OH') || (on.code === 'US-OH' && on.borderWith === 'US-KY'),
+    `code=${on.code} borderWith=${on.borderWith}`);
+}
 // #4/#5 handler input validation
 (async () => {
   const cases = [
