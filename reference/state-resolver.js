@@ -29,7 +29,6 @@ const CANDIDATES = [
 const DATA_DIR = CANDIDATES.find(d => { try { return fs.existsSync(path.join(d, 'states-coarse.geojson')); } catch (_) { return false; } }) || CANDIDATES[0];
 
 const TRUST_KM = Number(process.env.GEO_TRUST_KM || 3);   // > 1.28 km measured max miss
-const PRUNE_KM = Number(process.env.GEO_PRUNE_KM || 50);  // per-ring bbox distance prune cap
 
 let COARSE = null, FULL = null; // module-scope caches; survive warm invocations
 
@@ -68,14 +67,18 @@ function resolveIn(feats, lat, lng) {
   }
   return null;
 }
-// nearest border distance (km) for one state, with per-ring bbox pruning
+// nearest border distance (km) for one state, with per-ring bbox pruning.
+// A ring is skipped only when a km-scaled LOWER BOUND on its bbox distance
+// (equirectangular with cos(lat), small slack for approximation error) cannot
+// beat the current minimum — so pruning can never change the result.
 function borderKm(entry, lat, lng) {
   const p = point([lng, lat]);
+  const kx = 111.320 * Math.abs(Math.cos(lat * Math.PI / 180)), ky = 110.574;
   let min = Infinity;
   for (const { ring, bbox } of entry.rings) {
     const [a, b, c, d] = bbox;
     const dx = Math.max(a - lng, 0, lng - c), dy = Math.max(b - lat, 0, lat - d);
-    if (Math.hypot(dx, dy) * 111 > PRUNE_KM && min < Infinity) continue; // ring too far to matter
+    if (Math.hypot(dx * kx, dy * ky) * 0.99 >= min) continue; // cannot beat current best
     const dd = p2l(p, lineString(ring), { units: 'kilometers' });
     if (dd < min) min = dd;
   }

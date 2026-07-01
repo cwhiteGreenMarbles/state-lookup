@@ -13,11 +13,20 @@
  */
 const { resolveState } = require('./binary-resolver');
 
+// Strict coordinate parsing: rejects null/undefined/''/whitespace (which
+// Number() silently coerces to 0) and enforces the valid range — out-of-range
+// values are almost always swapped lat/lng or corrupt upstream data.
+function parseCoord(v, min, max) {
+  if (typeof v !== 'number' && !(typeof v === 'string' && v.trim() !== '')) return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : NaN;
+}
+
 exports.handler = async (event = {}) => {
   const src = event.queryStringParameters || event; // gateway proxy OR direct invoke
-  const lat = Number(src.lat), lng = Number(src.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return respond(400, { error: 'lat and lng are required numbers' });
+  const lat = parseCoord(src.lat, -90, 90), lng = parseCoord(src.lng, -180, 180);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    return respond(400, { error: 'lat (-90..90) and lng (-180..180) are required numbers' });
   }
   return respond(200, resolveState(lat, lng));
 };

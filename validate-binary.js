@@ -1,48 +1,108 @@
 /*
  * validate-binary.js — prove the precreated binary resolver is equivalent to the
- * GeoJSON resolver, and measure the cold-start win.
- *   - containment: must match the GeoJSON resolver's state code (target: 0 mismatch)
- *   - distance:    compare on near-border points (where the GeoJSON path also uses
- *                  full-res distance) — expect sub-km agreement
- *   - load time:   binary buffer read vs 21 MB GeoJSON parse
+ * GeoJSON reference resolver, and measure the cold-start win.
+ *
+ * Sampling covers CONUS *and* the regions where the binary distance path is most
+ * at risk (high-latitude anisotropy, the antimeridian, multipolygon islands):
+ *   - CONUS, Alaska (incl. Aleutians), Hawaii, plus a dateline strip.
+ * Fixed regression assertions cover the specific past defects (planar-degree KNN
+ * ranking, antimeridian wrap, input coercion in the handler).
  */
 const geo = require('./reference/state-resolver'); // GeoJSON + turf (tiered) — test-only ground truth
 const bin = require('./src/binary-resolver');       // precreated binary — the runtime path
+const { handler } = require('./src');
 
 function tms(fn) { const t = process.hrtime.bigint(); fn(); return Number(process.hrtime.bigint() - t) / 1e6; }
 
-// --- cold-start-style load timing (fresh process => first call pays the load) ---
+// --- cold-start-style load timing ---
+// (binary loads eagerly at require time now; re-measure via the cached loaders)
 console.log('== load time (cold) ==');
 console.log('GeoJSON full parse   :', tms(() => geo.loadFull()).toFixed(1), 'ms');
-console.log('binary geom+index    :', tms(() => { bin.loadGeom(); bin.loadIndex(); }).toFixed(1), 'ms');
+console.log('binary geom+index    :', '(loaded at require)', tms(() => { bin.loadGeom(); bin.loadIndex(); }).toFixed(1), 'ms cached');
+geo.loadCoarse();
 
-geo.loadCoarse(); // warm the tiered path fully
-
-// --- equivalence over random CONUS points ---
-const N = 200000;
-let land = 0, codeMismatch = 0, maxDistErr = 0, distCompared = 0;
-const errs = [];
-for (let i = 0; i < N; i++) {
-  const lat = 25 + Math.random() * 24, lng = -125 + Math.random() * 58;
-  const g = geo.resolveState(lat, lng);
-  const b = bin.resolveState(lat, lng);
-  if (g.code) land++;
-  if ((g.code || null) !== (b.code || null)) codeMismatch++;
-  if (g.tier === 'fine' && g.code && b.code && g.distanceKm != null && b.distanceKm != null) {
-    const e = Math.abs(g.distanceKm - b.distanceKm);
-    errs.push(e); distCompared++;
-    if (e > maxDistErr) maxDistErr = e;
+// --- equivalence over multi-region random points ---
+const REGIONS = [
+  { name: 'CONUS',    n: 20000, lat: [25, 49],     lng: [-125, -67] },
+  { name: 'Alaska',   n: 6000,  lat: [51, 71.5],   lng: [-179.9, -130] },
+  { name: 'Hawaii',   n: 2000,  lat: [18.5, 22.5], lng: [-160.5, -154.5] },
+  { name: 'Dateline', n: 1000,  lat: [51, 54],     lng: [-180, -172] },
+];
+let land = 0, codeMismatch = 0, distCompared = 0, maxDistErr = 0;
+const errs = [], mismatches = [];
+for (const r of REGIONS) {
+  let rLand = 0, rMis = 0, rMaxErr = 0;
+  for (let i = 0; i < r.n; i++) {
+    const lat = r.lat[0] + Math.random() * (r.lat[1] - r.lat[0]);
+    const lng = r.lng[0] + Math.random() * (r.lng[1] - r.lng[0]);
+    const g = geo.resolveState(lat, lng);
+    const b = bin.resolveState(lat, lng);
+    if (g.code) { land++; rLand++; }
+    if ((g.code || null) !== (b.code || null)) {
+      codeMismatch++; rMis++;
+      if (mismatches.length < 5) mismatches.push({ lat, lng, ref: g.code, bin: b.code });
+    }
+    // distance comparison only where the reference used its authoritative fine tier
+    if (g.tier === 'fine' && g.code && b.code && g.distanceKm != null && b.distanceKm != null) {
+      const e = Math.abs(g.distanceKm - b.distanceKm);
+      errs.push(e); distCompared++;
+      if (e > maxDistErr) maxDistErr = e;
+      if (e > rMaxErr) rMaxErr = e;
+    }
   }
+  console.log(`  ${r.name.padEnd(9)} n=${r.n}  land=${rLand}  codeMismatch=${rMis}  maxDistErr=${rMaxErr.toFixed(3)} km`);
 }
 errs.sort((a, b) => a - b);
 const p = q => errs.length ? errs[Math.floor(q * (errs.length - 1))] : 0;
-console.log('\n== equivalence over', N, 'random points (', land, 'landed) ==');
-console.log('containment code mismatches:', codeMismatch, `(${(100 * codeMismatch / (land || 1)).toFixed(4)}% of land pts)`);
-console.log('near-border distance compared:', distCompared, 'pts');
-console.log(`distance |binary - geojson| : p50 ${p(0.5).toFixed(3)}  p99 ${p(0.99).toFixed(3)}  max ${maxDistErr.toFixed(3)} km`);
+console.log('\n== equivalence (all regions) ==');
+console.log('containment code mismatches:', codeMismatch, `(${(100 * codeMismatch / (land || 1)).toFixed(4)}% of ${land} land pts)`);
+if (mismatches.length) console.log('  samples:', JSON.stringify(mismatches));
+console.log('fine-tier distance compared:', distCompared, 'pts');
+console.log(`distance |binary - reference| : p50 ${p(0.5).toFixed(3)}  p99 ${p(0.99).toFixed(3)}  max ${maxDistErr.toFixed(3)} km`);
 
-// --- per-call timing ---
-function timeit(fn, lat, lng, n) { const t = process.hrtime.bigint(); for (let i = 0; i < n; i++) fn(lat, lng); return Number(process.hrtime.bigint() - t) / 1e6 / n; }
-console.log('\n== binary per-call timing (ms) ==');
-console.log('interior   :', timeit(bin.resolveState, 39.7, -98.5, 2000).toFixed(4));
-console.log('near-border:', timeit(bin.resolveState, 39.11, -94.61, 2000).toFixed(4));
+// --- fixed regression assertions ---
+let failed = 0;
+function assert(name, cond, detail) {
+  console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${cond ? '' : '  -> ' + detail}`);
+  if (!cond) failed++;
+}
+console.log('\n== regression assertions ==');
+// #1 planar-KNN at high latitude: binary fine distance must match reference near a northern border
+{
+  const pts = [[48.95, -104.06, 'MT/ND border'], [48.9, -111.0, 'MT high-lat interior-ish'], [47.5, -97.1, 'ND near MN']];
+  for (const [la, lo, lbl] of pts) {
+    const g = geo.resolveState(la, lo), b = bin.resolveState(la, lo);
+    const gd = g.distanceKm, bd = b.distanceKm;
+    assert(`high-lat distance parity (${lbl})`, g.tier !== 'fine' || Math.abs(gd - bd) < 0.25, `ref=${gd} bin=${bd}`);
+    assert(`high-lat code parity (${lbl})`, (g.code || null) === (b.code || null), `ref=${g.code} bin=${b.code}`);
+  }
+}
+// #2 antimeridian: point in the Aleutian pass — nearest land is ~30 km east across the dateline
+{
+  const b = bin.resolveState(51.9, -179.95);
+  assert('antimeridian distance plausible (< 60 km)', b.distanceKm != null && b.distanceKm < 60, `distanceKm=${b.distanceKm}`);
+}
+// Hawaii multipolygon containment
+{
+  const b = bin.resolveState(21.3069, -157.858);
+  assert('Honolulu resolves US-HI', b.code === 'US-HI', `code=${b.code}`);
+}
+// #4/#5 handler input validation
+(async () => {
+  const cases = [
+    [{ lat: null, lng: null }, 'null coords'],
+    [{ queryStringParameters: { lat: '', lng: '' } }, 'empty-string coords'],
+    [{ lat: 200, lng: -94 }, 'lat out of range'],
+    [{ lat: -94.57, lng: 39.09, }, 'swapped lat/lng (lat < -90)'],
+    [{}, 'missing coords'],
+  ];
+  for (const [ev, lbl] of cases) {
+    const r = await handler(ev);
+    assert(`handler 400 on ${lbl}`, r.statusCode === 400, `got ${r.statusCode} ${r.body}`);
+  }
+  const ok = await handler({ lat: 39.0997, lng: -94.5786 });
+  assert('handler 200 on valid coords', ok.statusCode === 200 && JSON.parse(ok.body).code === 'US-MO', `${ok.statusCode} ${ok.body}`);
+
+  console.log(failed === 0 ? '\nALL ASSERTIONS PASSED' : `\n${failed} ASSERTION(S) FAILED`);
+  process.exitCode = failed === 0 ? 0 : 1;
+})();

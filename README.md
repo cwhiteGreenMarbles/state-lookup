@@ -23,12 +23,24 @@ no index build at cold start, and no coarse/fine tiering:
 
 ```
 resolveState(39.0997, -94.5786)
-// { code: 'US-MO', country: 'US', distanceKm: 2.47, tier: 'binary', nearBorder: true, escalated: false }
+// { code: 'US-MO', country: 'US', distanceKm: 2.47, nearBorder: true }
 ```
 
-Measured: containment matches the GeoJSON+turf ground truth on 200k random points
-(**0 mismatches**); distance within **60 m p99**; cold-start load **~20 ms** (vs
-~300 ms to parse the 21 MB GeoJSON); per call **0.04–0.19 ms**.
+**Response contract:** `{ code, country, distanceKm, nearBorder }`
+- `code`/`country` are `null` offshore (point in no state/province).
+- `distanceKm` is ALWAYS the distance to the nearest border segment — for
+  offshore points that is the distance to the nearest coast. It is `null` only
+  if the index is empty.
+- `nearBorder` = `distanceKm <= GEO_TRUST_KM` (default 3 km).
+- The distance search self-expands (k-doubling with a planar lower bound) so the
+  geodesically nearest segment is never missed at high latitude, and re-queries
+  wrapped by 360° near the antimeridian (Aleutians).
+- Data loads eagerly at require time (Lambda init phase); set `GEO_LAZY=1` to defer.
+
+Measured: containment matches the GeoJSON+turf ground truth on multi-region
+random sampling — CONUS, Alaska, Hawaii, dateline (**0 mismatches**); cold-start
+load **~20 ms** (vs ~300 ms to parse the 21 MB GeoJSON); per call **0.01–0.2 ms**.
+See `docs/CODE_REVIEW_FINDINGS.md` for the review that hardened this path.
 
 > The coarse→fine tiering was an earlier design; the binary index makes fine work
 > cheap and flat, so the service collapses to one path. `GEO_TRUST_KM` now only
