@@ -18,10 +18,13 @@ tl_*.xml
 *_Gaz_place_national.txt
 
 # Precreated runtime binary artifacts (the layer) — regenerate with `npm run build:binary`.
-layer/geo/geom.f64
-layer/geo/geom-meta.json
-layer/geo/edges.flatbush
-layer/geo/edges-start.u32
-layer/geo/edges-cid.u16
+# layer/geo/geom.f64
+# layer/geo/geom-meta.json
+# layer/geo/edges.flatbush
+# layer/geo/edges-start.u32
+# layer/geo/edges-cid.u16
 
 # data/states-coarse.geojson IS committed (small, ~0.19 MB; build source / client-bundle option).
+
+.DS_Store
+.aws-sam

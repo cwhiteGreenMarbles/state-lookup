@@ -14,13 +14,15 @@ Description: >
 
 Globals:
   Function:
-    Runtime: nodejs22.x
+    Runtime: nodejs24.x
     Timeout: 10
     MemorySize: 1024
 
 Resources:
   # Precreated binary boundary artifacts ship in a versioned layer, NOT the function zip.
-  # layer/ contains ONLY what the runtime reads (mounted at /opt/geo):
+  # layer/geo/ contains ONLY what the runtime reads. The nodejs24.x layer build
+  # relocates content under nodejs/, so these mount at /opt/nodejs/geo/ (see
+  # GEO_DATA_DIR on the function):
   #   geom.f64  geom-meta.json  edges.flatbush  edges-start.u32  edges-cid.u16
   # GeoJSON build sources live in data/ (outside the layer) and are never deployed.
   StateLookupBoundariesLayer:
@@ -28,9 +30,9 @@ Resources:
     Properties:
       LayerName: state-lookup-boundaries
       ContentUri: layer/
-      CompatibleRuntimes: [ nodejs22.x ]
+      CompatibleRuntimes: [ nodejs22.x, nodejs24.x ]
     Metadata:
-      BuildMethod: nodejs22.x
+      BuildMethod: nodejs24.x
 
   StateLookupFunction:
     Type: AWS::Serverless::Function
@@ -43,7 +45,9 @@ Resources:
         Size: 512
       Environment:
         Variables:
-          GEO_DATA_DIR: /opt/geo  # binary artifacts mounted from the layer
+          # The Node layer BuildMethod relocates layer content under nodejs/, so
+          # layer/geo/* deploys to /opt/nodejs/geo/* (NOT /opt/geo).
+          GEO_DATA_DIR: /opt/nodejs/geo  # binary artifacts mounted from the layer
           GEO_TRUST_KM: '3'       # distance (km) under which `nearBorder` is flagged
       Layers:
         - !Ref StateLookupBoundariesLayer
@@ -51,6 +55,19 @@ Resources:
       #   GetState:
       #     Type: Api
       #     Properties: { Path: /geo/state, Method: GET }
+    Metadata:
+      # esbuild bundles index.js -> binary-resolver.js -> flatbush into a single
+      # CJS file, inlining flatbush's ESM at build time so the runtime never
+      # require()s an ES module. Geo data is untouched (ships via the layer at
+      # /opt/geo; those buffers are read with fs, never require()d).
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - index.js
+        Format: cjs
+        Target: node24
+        Sourcemap: false
+        Minify: false
 
 Outputs:
   FunctionArn:

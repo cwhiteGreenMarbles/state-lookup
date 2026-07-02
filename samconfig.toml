@@ -1,0 +1,12 @@
+version = 0.1
+
+[development.deploy.parameters]
+stack_name = "nomo-geodata-development"
+resolve_s3 = true
+s3_prefix = "nomo-geodata-development"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+
+[development.global.parameters]
+region = "us-east-1"
