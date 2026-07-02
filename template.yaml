@@ -21,10 +21,10 @@ Globals:
     MemorySize: 1024
 
 Resources:
-  # Precreated binary boundary artifacts ship in a versioned layer, NOT the function zip.
-  # layer/geo/ contains ONLY what the runtime reads. The nodejs24.x layer build
-  # relocates content under nodejs/, so these mount at /opt/nodejs/geo/ (see
-  # GEO_DATA_DIR on the function):
+  # Precreated binary boundary artifacts ship in a versioned layer, NOT the function
+  # zip. They're STORED gzipped (layer/geo/*.gz, ~20MB) and the makefile build
+  # (layer/Makefile) inflates them to raw under nodejs/geo/, mounting at
+  # /opt/nodejs/geo/ (see GEO_DATA_DIR). Runtime reads raw — gzip is storage-only:
   #   geom.f64  geom-meta.json  edges.flatbush  edges-start.u32  edges-cid.u16
   # GeoJSON build sources live in data/ (outside the layer) and are never deployed.
   StateLookupBoundariesLayer:
@@ -34,7 +34,7 @@ Resources:
       ContentUri: layer/
       CompatibleRuntimes: [ nodejs22.x, nodejs24.x ]
     Metadata:
-      BuildMethod: nodejs24.x
+      BuildMethod: makefile
 
   StateLookupFunction:
     Type: AWS::Serverless::Function
@@ -42,7 +42,10 @@ Resources:
       FunctionName: state-lookup
       CodeUri: src/               # index.js + binary-resolver.js + node_modules (flatbush only)
       Handler: index.handler
-      MemorySize: 2048
+      # MemorySize inherits Globals (1024). Cold start is read-bandwidth-bound
+      # (~120 MB/s, memory-independent), so higher memory doesn't speed init — 4096
+      # read the 40 MB at the same ~330 ms as 2048. 1024 is the cost-efficient floor
+      # (handler uses ~167 MB); the diagnostic read timers stay for now.
       EphemeralStorage:
         Size: 512
       Environment:

@@ -10,6 +10,12 @@ These frontend changes remove the *redundant calls themselves* — and, unlike t
 service swap, most of them are worth doing **even before** `state-lookup` ships,
 because they also cut Google quota today.
 
+> **Scope decision:** state resolution is **always a `state-lookup` web service
+> call** — there is no client-side point-in-polygon in the frontends. The clients
+> do not bundle boundary data or resolve locally; every change below is about
+> calling the service **less often** (caching, gating, debouncing), not moving
+> resolution into the client.
+
 ## The core observation
 
 The state code is the **least-cached value on the hottest path**, yet it is the

@@ -1,0 +1,7 @@
+# Stored form is *.gz (source of truth, ~20MB). Raw artifacts are generated:
+#   - locally by `npm run inflate` (for test.js / local-server.js)
+#   - at deploy by layer/Makefile (into the built layer)
+# Never commit the raw files.
+*
+!.gitignore
+!*.gz

@@ -6,9 +6,13 @@
   "scripts": {
     "build": "node build-boundaries.js --shp ./tl_2025_us_state.shp --out ./data --coarse 1",
     "build:binary": "node build-binary.js",
+    "inflate": "node inflate-layer.js",
     "install:fn": "npm --prefix src install",
+    "pretest": "node inflate-layer.js",
     "test": "node test.js",
+    "prevalidate:binary": "node inflate-layer.js",
     "validate:binary": "node validate-binary.js",
+    "prestart": "node inflate-layer.js",
     "start": "node local-server.js",
     "refresh-data": "./refresh-data.sh"
   },
