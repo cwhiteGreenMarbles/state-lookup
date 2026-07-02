@@ -13,13 +13,15 @@
  *     360 degrees so Aleutian-area points see segments across the dateline.
  *
  * Response contract (documented in README):
- *   { code, country, distanceKm, nearBorder, borderPoint, borderWith }
+ *   { code, country, distanceKm, nearBorder, borderPoint, borderWith, bordersWith }
  *   - code/country are null offshore (point in no state/province).
  *   - distanceKm is ALWAYS the distance to the nearest state border segment —
  *     for offshore points that is the distance to the nearest coast.
  *   - nearBorder = distanceKm <= GEO_TRUST_KM.
  *   - borderPoint = the nearest {lat,lng} ON the border; borderWith = the
  *     state/province across it (null = water / non-US neighbor).
+ *   - bordersWith = ALL states meeting at borderPoint minus the containing one
+ *     (one entry on a normal border, three at Four Corners; borderWith first).
  */
 const fs = require('fs');
 const path = require('path');
@@ -146,6 +148,23 @@ function nearestSeg(lng, lat) {
   return { km: best, sp: bestSp };
 }
 
+// all states touching a point: probe 8 compass directions a small step out and
+// resolve containment for each. At a normal border this finds both sides; at a
+// tri-/quadripoint (e.g. Four Corners) it finds every state meeting there.
+function statesAtPoint(geo, lat0, lng0, kx) {
+  const found = new Set();
+  const stepKm = 0.03;
+  for (let i = 0; i < 8; i++) {
+    const ang = i * Math.PI / 4;
+    const sLat = lat0 + (Math.sin(ang) * stepKm) / KY;
+    let sLng = lng0 + (Math.cos(ang) * stepKm) / (kx || 1e-9);
+    if (sLng > 180) sLng -= 360; else if (sLng < -180) sLng += 360;
+    const fi = resolveFeatureIdx(geo, sLat, sLng);
+    if (fi >= 0) found.add(geo.codes[geo.features[fi].c]);
+  }
+  return found;
+}
+
 // distance + nearest point on the border + the state across that border.
 // `ownCode` is the containing state's code (null offshore), used to tell
 // "across the line" apart from "back into the same state".
@@ -155,7 +174,7 @@ function borderInfo(lat, lng, ownCode) {
   // the other side of the dateline are retrievable from the index
   if (lng > 170) { const r2 = nearestSeg(lng - 360, lat); if (r2.km < r.km) r = r2; }
   else if (lng < -170) { const r2 = nearestSeg(lng + 360, lat); if (r2.km < r.km) r = r2; }
-  if (r.sp < 0) return { distanceKm: null, borderPoint: null, borderWith: null };
+  if (r.sp < 0) return { distanceKm: null, borderPoint: null, borderWith: null, bordersWith: [] };
 
   const geo = loadGeom(), sp = r.sp;
   const ax = geo.coords[2 * sp], ay = geo.coords[2 * sp + 1], bx = geo.coords[2 * (sp + 1)], by = geo.coords[2 * (sp + 1) + 1];
@@ -208,15 +227,23 @@ function borderInfo(lat, lng, ownCode) {
       }
     }
   }
+  // bordersWith: every state meeting at the nearest border point (minus the
+  // containing state) — one entry on a normal border, three at Four Corners.
+  // borderWith (the directional single answer) is kept first for compatibility.
+  const around = statesAtPoint(geo, bpLat, bpLng, kx);
+  around.delete(ownCode);
+  let bordersWith = [...around].filter(c => c !== borderWith);
+  if (borderWith) bordersWith.unshift(borderWith);
+
   // report the great-circle distance to the chosen border point (the flat r.km
   // is fine for picking the segment, but drifts ~0.5% over 100+ km)
   const distanceKm = Math.round(havKm(lat, lng, bpLat, bpLng) * 100) / 100;
-  return { distanceKm, borderPoint, borderWith };
+  return { distanceKm, borderPoint, borderWith, bordersWith };
 }
 
 /**
  * resolveState(lat, lng) ->
- *   { code, country, distanceKm, nearBorder, borderPoint, borderWith }
+ *   { code, country, distanceKm, nearBorder, borderPoint, borderWith, bordersWith }
  * `code` is the authoritative containing state/province (e.g. "US-MO"), or null
  * offshore. `distanceKm` is always the distance to the nearest border segment
  * (offshore: nearest coast). `borderPoint` is the nearest point ON that border;
@@ -227,9 +254,9 @@ function resolveState(lat, lng) {
   const geo = loadGeom();
   const fi = resolveFeatureIdx(geo, lat, lng);
   const code = fi >= 0 ? geo.codes[geo.features[fi].c] : null;
-  const { distanceKm, borderPoint, borderWith } = borderInfo(lat, lng, code);
+  const { distanceKm, borderPoint, borderWith, bordersWith } = borderInfo(lat, lng, code);
   const nearBorder = distanceKm != null && distanceKm <= TRUST_KM;
-  return { code, country: code ? code.slice(0, 2) : null, distanceKm, nearBorder, borderPoint, borderWith };
+  return { code, country: code ? code.slice(0, 2) : null, distanceKm, nearBorder, borderPoint, borderWith, bordersWith };
 }
 
 // Eager-load at module scope: in Lambda this runs during the init phase (boosted

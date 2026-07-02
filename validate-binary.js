@@ -107,6 +107,84 @@ console.log('\n== regression assertions ==');
   assert('on-the-border names both states (OH/KY)',
     (on.code === 'US-KY' && on.borderWith === 'US-OH') || (on.code === 'US-OH' && on.borderWith === 'US-KY'),
     `code=${on.code} borderWith=${on.borderWith}`);
+  // Four Corners quadripoint: bordersWith must contain the three other states
+  const fc = bin.resolveState(36.998976, -109.045172);
+  const four = ['US-AZ', 'US-CO', 'US-NM', 'US-UT'];
+  const expected = four.filter(c => c !== fc.code).sort().join(',');
+  assert('Four Corners bordersWith lists the other three states',
+    four.includes(fc.code) && [...fc.bordersWith].sort().join(',') === expected,
+    `code=${fc.code} bordersWith=${JSON.stringify(fc.bordersWith)}`);
+  // normal border: bordersWith is exactly [borderWith]
+  assert('KC bordersWith is exactly [US-KS]', kc.bordersWith.length === 1 && kc.bordersWith[0] === 'US-KS',
+    `bordersWith=${JSON.stringify(kc.bordersWith)}`);
+  // long-distance geodesic drift check: Columbus OH -> OH/KY border, independently
+  // verified against Google Maps (142.76 km). The flat-projection bug this guards
+  // against reported 141.95 here; fail if the value drifts > 200 m.
+  const cb = bin.resolveState(40.03281758831511, -83.07472294770703);
+  assert('Columbus OH long-distance geodesic accuracy (142.75 ±0.2 km)',
+    cb.code === 'US-OH' && cb.borderWith === 'US-KY' && Math.abs(cb.distanceKm - 142.75) < 0.2,
+    `code=${cb.code} borderWith=${cb.borderWith} distanceKm=${cb.distanceKm}`);
+  // on-the-line: distance must be ~0 and both sides named (drift here would mean
+  // borderPoint/selection regressions)
+  assert('OH/KY on-line distance is 0', on.distanceKm === 0 && on.bordersWith.length === 1,
+    `distanceKm=${on.distanceKm} bordersWith=${JSON.stringify(on.bordersWith)}`);
+  // districts & territories (US-DC confirmed to exist as a downstream shard)
+  const dc = bin.resolveState(38.9047, -77.0363);
+  assert('Washington DC resolves US-DC (borderWith US-VA)', dc.code === 'US-DC' && dc.borderWith === 'US-VA',
+    `code=${dc.code} borderWith=${dc.borderWith}`);
+  assert('San Juan resolves US-PR', bin.resolveState(18.4655, -66.1057).code === 'US-PR', '');
+  assert('Guam resolves US-GU (positive longitude)', bin.resolveState(13.4443, 144.7937).code === 'US-GU', '');
+  // tri-point: exactly two states across (between normal border=1 and Four Corners=3)
+  const tp = bin.resolveState(40.0029, -102.0519);
+  assert('CO/NE/KS tripoint has 2 in bordersWith',
+    tp.bordersWith.length === 2 && ['US-CO', 'US-KS', 'US-NE'].includes(tp.code)
+      && tp.bordersWith.every(c => ['US-CO', 'US-KS', 'US-NE'].includes(c)) && !tp.bordersWith.includes(tp.code),
+    `code=${tp.code} bordersWith=${JSON.stringify(tp.bordersWith)}`);
+  // continental oddities
+  const kb = bin.resolveState(36.503, -89.541);
+  assert('Kentucky Bend exclave resolves US-KY / US-MO', kb.code === 'US-KY' && kb.borderWith === 'US-MO',
+    `code=${kb.code} borderWith=${kb.borderWith}`);
+  const de = bin.resolveState(39.585, -75.552);
+  assert('Delaware River near NJ shore resolves US-DE (low-water-mark boundary)', de.code === 'US-DE' && de.borderWith === 'US-NJ',
+    `code=${de.code} borderWith=${de.borderWith}`);
+  const li = bin.resolveState(40.6892, -74.0445);
+  assert('Liberty Island resolves US-NY (enclave in NJ waters)', li.code === 'US-NY' && li.borderWith === 'US-NJ',
+    `code=${li.code} borderWith=${li.borderWith}`);
+  const cl = bin.resolveState(41.2905, -95.918);
+  assert('Carter Lake IA resolves US-IA west of the Missouri R.', cl.code === 'US-IA' && cl.borderWith === 'US-NE',
+    `code=${cl.code} borderWith=${cl.borderWith}`);
+  const nwa = bin.resolveState(49.3517, -95.0603);
+  assert('Northwest Angle resolves US-MN with Canada null', nwa.code === 'US-MN' && nwa.borderWith === null,
+    `code=${nwa.code} borderWith=${nwa.borderWith}`);
+  // Upper Peninsula Michigan & related
+  const up = bin.resolveState(46.5436, -87.3954);
+  assert('Marquette (central UP) resolves US-MI, nearest border US-WI', up.code === 'US-MI' && up.borderWith === 'US-WI',
+    `code=${up.code} borderWith=${up.borderWith}`);
+  const ssm = bin.resolveState(46.495, -84.345);
+  assert('Sault Ste Marie resolves US-MI with Canada null', ssm.code === 'US-MI' && ssm.borderWith === null,
+    `code=${ssm.code} borderWith=${ssm.borderWith}`);
+  const lake = bin.resolveState(43.5, -87.2);
+  assert('Mid Lake Michigan resolves a state (WI/MI water line)',
+    (lake.code === 'US-WI' && lake.borderWith === 'US-MI') || (lake.code === 'US-MI' && lake.borderWith === 'US-WI'),
+    `code=${lake.code} borderWith=${lake.borderWith}`);
+  // antimeridian input edge: lng=+180 and lng=-180 are the same meridian
+  const p180 = bin.resolveState(52.0, 180.0), m180 = bin.resolveState(52.0, -180.0);
+  assert('lng=+180 and lng=-180 agree', p180.distanceKm === m180.distanceKm && p180.borderWith === m180.borderWith,
+    `+180=${JSON.stringify(p180)} -180=${JSON.stringify(m180)}`);
+  // borderPoint idempotence: feeding any near-border result's borderPoint back in
+  // must land ON the border (distance 0) in one of the two adjacent states
+  let idemFail = 0, idemN = 0;
+  for (let i = 0; i < 4000 && idemN < 30; i++) {
+    const lat = 25 + Math.random() * 24, lng = -125 + Math.random() * 58;
+    const r = bin.resolveState(lat, lng);
+    if (!r.code || r.distanceKm == null || r.distanceKm < 0.05 || r.distanceKm > 3 || !r.borderWith) continue;
+    idemN++;
+    const r2 = bin.resolveState(r.borderPoint.lat, r.borderPoint.lng);
+    const allowed = new Set([r.code, r.borderWith]);
+    if (r2.distanceKm > 0.01 || !allowed.has(r2.code)) idemFail++;
+  }
+  assert(`borderPoint idempotence (${idemN} near-border samples)`, idemN >= 20 && idemFail === 0,
+    `sampled=${idemN} failures=${idemFail}`);
 }
 // #4/#5 handler input validation
 (async () => {

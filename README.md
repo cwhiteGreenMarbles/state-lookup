@@ -27,7 +27,7 @@ resolveState(39.0997, -94.5786)
 //   borderPoint: { lat: 39.099701, lng: -94.607136 }, borderWith: 'US-KS' }
 ```
 
-**Response contract:** `{ code, country, distanceKm, nearBorder, borderPoint, borderWith }`
+**Response contract:** `{ code, country, distanceKm, nearBorder, borderPoint, borderWith, bordersWith }`
 - `code`/`country` are `null` offshore (point in no state/province).
 - `distanceKm` is ALWAYS the distance to the nearest border segment — for
   offshore points that is the distance to the nearest coast. It is `null` only
@@ -38,6 +38,10 @@ resolveState(39.0997, -94.5786)
 - `borderWith` = the state/province across that border (e.g. `US-KS` for a
   Kansas City MO point). `null` means water or a non-US neighbor (Canada/Mexico,
   until those boundaries are added to the dataset).
+- `bordersWith` = ALL states meeting at `borderPoint`, minus the containing one
+  (`borderWith` listed first). One entry on a normal border; three at Four
+  Corners (`["US-AZ","US-CO","US-UT"]` for a New Mexico corner point); empty on
+  a coast / foreign border.
 - The distance search self-expands (k-doubling with a planar lower bound) so the
   geodesically nearest segment is never missed at high latitude, and re-queries
   wrapped by 360° near the antimeridian (Aleutians).
