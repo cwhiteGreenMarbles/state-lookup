@@ -47,10 +47,37 @@ node test.js
 echo "==> full validation (multi-region equivalence + regression assertions)"
 node validate-binary.js
 
-# --- 5. remove superseded vintages ---
+# --- 5. external sweep: Census Gazetteer places (~32k labeled points, every state + DC + PR) ---
+# Prefer the gazetteer vintage matching the TIGER year; walk back if not published yet.
+GAZ_YEAR=""
+for gy in "$YEAR" $(seq $((YEAR - 1)) -1 $((YEAR - 3))); do
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -I \
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/${gy}_Gazetteer/${gy}_Gaz_place_national.zip" || echo 000)
+  if [ "$code" = "200" ]; then GAZ_YEAR="$gy"; break; fi
+done
+if [ -n "$GAZ_YEAR" ]; then
+  GAZ_ZIP="${GAZ_YEAR}_Gaz_place_national.zip"
+  if [ ! -f "$GAZ_ZIP" ]; then
+    echo "==> downloading Gazetteer ${GAZ_YEAR}"
+    curl -sS --fail --max-time 120 -o "$GAZ_ZIP" \
+      "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/${GAZ_YEAR}_Gazetteer/${GAZ_ZIP}"
+  fi
+  unzip -o "$GAZ_ZIP" >/dev/null
+  echo "==> gazetteer sweep (${GAZ_YEAR}, all states + DC + PR)"
+  node scripts/validate-gazetteer.js "./${GAZ_YEAR}_Gaz_place_national.txt"
+else
+  echo "WARNING: no Census Gazetteer vintage found — skipping external sweep" >&2
+fi
+
+# --- 6. remove superseded vintages ---
 for f in tl_*_us_state.*; do
   case "$f" in tl_${YEAR}_us_state.*) ;; *) rm -f "$f" ;; esac
 done
+if [ -n "$GAZ_YEAR" ]; then
+  for f in *_Gaz_place_national.*; do
+    case "$f" in ${GAZ_YEAR}_Gaz_place_national.*) ;; *) rm -f "$f" ;; esac
+  done
+fi
 
 echo ""
 echo "==> DONE. TIGER${YEAR} data built and validated."

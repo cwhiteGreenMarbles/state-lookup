@@ -12,9 +12,10 @@ the same methodology (see "Bucketing" below).
 | 2 | US Census Gazetteer places (2025) | Census USPS state per place | 32,350 | all 50 + DC + PR | **100.0000% interior, 100.0000% near-border** |
 | 3 | OpenStreetMap place nodes | OSM ISO3166-2 boundary relations (fully independent lineage) | 480 | 4 (Overpass rate-limited) | **100%** |
 | 4 | OpenAddresses (all 4 US regions) | source state directory | 33,164 | 51 | **100%** excluding one provably-misfiled source file (see findings) |
-| 5 | Production `Homes.<STATE>` MongoDB | the state collection each doc lives in | 81 (populated collections: OH/FL/WI/MO) | 4 | **100% of valid coordinates** (62/62) |
+| 5 | National Address Database (NAD r21) | State column from state/local address authorities | 18,491 (every 5000th row of 38.5 GB) | 46 (incl. VI) | **100.0000% interior, 100.0000% near-border** |
+| 6 | Production `Homes.<STATE>` MongoDB | the state collection each doc lives in | 81 (populated collections: OH/FL/WI/MO) | 4 | **100% of valid coordinates** (62/62) |
 
-Combined: **~95,000 labeled points, zero resolver errors.** Every apparent
+Combined: **~113,000 labeled points, zero resolver errors.** Every apparent
 failure traced to an error in the *source data*, which the resolver exposed
 (see "Data errors found").
 
@@ -89,7 +90,20 @@ relation. **Public Overpass endpoints rate-limit hard** (429s); the cache file
 makes re-runs resume. Treat as a spot check, not the bulk gate — for full
 coverage at scale use Geofabrik per-state extracts instead.
 
-### 4. Production Homes audit (MongoDB)
+### 4. National Address Database — authoritative address points
+
+```bash
+# data (public domain): https://www.transportation.gov/gis/national-address-database
+# the r21 txt is ~38 GB — sample it rather than parsing whole:
+awk 'NR==1 || NR%5000==2' TXT/NAD_r21.txt > nad-sample.csv
+node scripts/validate-nad.js ./nad-sample.csv
+```
+NAD points are submitted by state/local address authorities, so the `State`
+column is close to ground truth by construction. r21 covers ~46 jurisdictions
+(not yet all 50 states). Quote-aware CSV parsing is built in (NAD text fields
+contain commas).
+
+### 5. Production Homes audit (MongoDB)
 
 Sample coordinates from the per-state collections and compare to the resolver
 (read-only; skip `PII_*` collections):

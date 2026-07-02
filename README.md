@@ -126,8 +126,11 @@ npm run refresh-data          # auto-detects the newest vintage on the Census se
 ```
 
 Downloads the newest TIGER states file, rebuilds `data/` + `layer/geo/`, runs the
-smoke test and full validation, and removes superseded vintages. Afterwards review
-`git status`, bump vintage references if the year changed, commit, republish the layer.
+smoke test, the full validation, **and the Census Gazetteer external sweep**
+(~32k labeled places, every state + DC + PR — fails loudly on any mismatch), then
+removes superseded vintages. Afterwards review `git status`, bump vintage
+references if the year changed, commit, republish the layer. See
+`docs/VALIDATION.md` for the other external sweeps (NAD, OpenAddresses, OSM).
 
 ## TODO
 

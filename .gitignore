@@ -13,6 +13,10 @@ tl_*.zip
 tl_*.xml
 *.iso.xml
 
+# Census Gazetteer sweep inputs (downloaded by refresh-data.sh)
+*_Gaz_place_national.zip
+*_Gaz_place_national.txt
+
 # Precreated runtime binary artifacts (the layer) — regenerate with `npm run build:binary`.
 layer/geo/geom.f64
 layer/geo/geom-meta.json
