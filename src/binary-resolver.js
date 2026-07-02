@@ -43,11 +43,19 @@ const KY = 110.574;                                   // km per degree latitude
 
 let GEO = null, EI = null;
 
+// Read a file, logging its individual read time + size — per-file cold-start
+// diagnostic (which of the five artifacts dominates the ~360ms init read).
+function timedRead(file) {
+  const t = performance.now();
+  const b = fs.readFileSync(path.join(DATA_DIR, file));
+  console.log(`[state-lookup] read ${file}: ${(performance.now() - t).toFixed(1)} ms (${(b.length / 1048576).toFixed(2)} MB)`);
+  return b;
+}
 // Read a file into a typed array WITHOUT copying when the Buffer already owns an
 // exclusive, aligned ArrayBuffer (true for large readFileSync buffers, which are
 // non-pooled). Copy only in the pooled/misaligned case.
 function readTyped(file, Ctor) {
-  const b = fs.readFileSync(path.join(DATA_DIR, file));
+  const b = timedRead(file);
   if (b.byteOffset % Ctor.BYTES_PER_ELEMENT === 0) {
     return new Ctor(b.buffer, b.byteOffset, b.byteLength / Ctor.BYTES_PER_ELEMENT);
   }
@@ -57,13 +65,13 @@ function readTyped(file, Ctor) {
 function loadGeom() {
   if (GEO) return GEO;
   const coords = readTyped('geom.f64', Float64Array);
-  const meta = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'geom-meta.json'), 'utf8'));
+  const meta = JSON.parse(timedRead('geom-meta.json').toString('utf8'));
   GEO = { coords, codes: meta.codes, features: meta.features };
   return GEO;
 }
 function loadIndex() {
   if (EI) return EI;
-  const b = fs.readFileSync(path.join(DATA_DIR, 'edges.flatbush'));
+  const b = timedRead('edges.flatbush');
   const ab = (b.byteOffset === 0 && b.byteLength === b.buffer.byteLength)
     ? b.buffer
     : b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
