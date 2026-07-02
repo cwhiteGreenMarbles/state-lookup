@@ -26,9 +26,13 @@ exports.handler = async (event = {}) => {
   const src = event.queryStringParameters || event; // gateway proxy OR direct invoke
   const lat = parseCoord(src.lat, -90, 90), lng = parseCoord(src.lng, -180, 180);
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    return respond(400, { error: 'lat (-90..90) and lng (-180..180) are required numbers' });
+    const output = { error: 'lat (-90..90) and lng (-180..180) are required numbers' };
+    console.log('[state-lookup]', JSON.stringify({ input: { lat: src.lat, lng: src.lng }, status: 400, output }));
+    return respond(400, output);
   }
-  return respond(200, resolveState(lat, lng));
+  const output = resolveState(lat, lng);
+  console.log('[state-lookup]', JSON.stringify({ input: { lat, lng }, status: 200, output }));
+  return respond(200, output);
 };
 
 // re-export for in-process use: require('../state-lookup/src').resolveState(lat, lng)
