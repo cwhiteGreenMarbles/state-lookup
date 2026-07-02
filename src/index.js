@@ -9,9 +9,8 @@
  *   1. Direct invoke: { "lat": 39.0997, "lng": -94.5786 }
  *   2. API Gateway proxy (later): event.queryStringParameters = { lat, lng }
  *
- * `resolveState` is re-exported for IN-PROCESS use (e.g. getNearestLocations).
  */
-const { resolveState } = require('./binary-resolver');
+import { resolveState } from './binary-resolver.js';
 
 // Strict coordinate parsing: rejects null/undefined/''/whitespace (which
 // Number() silently coerces to 0) and enforces the valid range — out-of-range
@@ -22,7 +21,7 @@ function parseCoord(v, min, max) {
   return Number.isFinite(n) && n >= min && n <= max ? n : NaN;
 }
 
-exports.handler = async (event = {}) => {
+export const handler = async (event = {}) => {
   const src = event.queryStringParameters || event; // gateway proxy OR direct invoke
   const lat = parseCoord(src.lat, -90, 90), lng = parseCoord(src.lng, -180, 180);
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
@@ -34,9 +33,6 @@ exports.handler = async (event = {}) => {
   console.log('[state-lookup]', JSON.stringify({ input: { lat, lng }, status: 200, output }));
   return respond(200, output);
 };
-
-// re-export for in-process use: require('../state-lookup/src').resolveState(lat, lng)
-exports.resolveState = resolveState;
 
 function respond(statusCode, body) {
   return {

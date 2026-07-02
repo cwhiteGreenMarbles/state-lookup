@@ -23,10 +23,12 @@
  *   - bordersWith = ALL states meeting at borderPoint minus the containing one
  *     (one entry on a normal border, three at Four Corners; borderWith first).
  */
-const fs = require('fs');
-const path = require('path');
-const _fb = require('flatbush');
-const Flatbush = _fb.default || _fb; // v4 is ESM -> constructor under .default when required from CJS
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import Flatbush from 'flatbush'; // v4 is ESM — native default import, no interop shim needed
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const CANDIDATE_DIRS = [
   process.env.GEO_DATA_DIR,
@@ -259,8 +261,13 @@ function resolveState(lat, lng) {
   return { code, country: code ? code.slice(0, 2) : null, distanceKm, nearBorder, borderPoint, borderWith, bordersWith };
 }
 
-// Eager-load at module scope: in Lambda this runs during the init phase (boosted
-// CPU, not billed against the first request). Set GEO_LAZY=1 to defer.
+// Eager-load at module scope: in Lambda this runs during the init phase. The buffer
+// reads dominate cold start (~360ms of ~480ms Init Duration) and are I/O-throughput-
+// bound — reading them concurrently did NOT help, so this stays a simple sequential
+// load. Set GEO_LAZY=1 to defer to the first request (sync, memoized) instead.
+// The timing log below is diagnostic (measuring the load's share of Init Duration).
+const _initT0 = performance.now();
 if (process.env.GEO_LAZY !== '1') { loadGeom(); loadIndex(); }
+console.log('[state-lookup] init buffer load:', (performance.now() - _initT0).toFixed(1), 'ms');
 
-module.exports = { resolveState, loadGeom, loadIndex, DATA_DIR };
+export { resolveState, loadGeom, loadIndex, DATA_DIR };

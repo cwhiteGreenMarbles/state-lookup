@@ -2,9 +2,9 @@
   "name": "state-lookup",
   "version": "0.1.0",
   "description": "Lambda function code for state-lookup (lat/lng -> state/province + distance). Binary runtime: Flatbush index + geometry buffers. Boundary data ships in a layer.",
+  "type": "module",
   "main": "index.js",
   "dependencies": {
-    "flatbush": "4.6.2",
-    "esbuild": "^0.24.0"
+    "flatbush": "4.6.2"
   }
 }

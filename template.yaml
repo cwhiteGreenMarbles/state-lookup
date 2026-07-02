@@ -15,6 +15,8 @@ Description: >
 Globals:
   Function:
     Runtime: nodejs24.x
+    Architectures:
+      - arm64          # Graviton: ~20% cheaper/GB-s, often faster. Safe here — deps are pure JS, data is endian-neutral (both AWS arches are little-endian).
     Timeout: 10
     MemorySize: 1024
 
@@ -40,7 +42,7 @@ Resources:
       FunctionName: state-lookup
       CodeUri: src/               # index.js + binary-resolver.js + node_modules (flatbush only)
       Handler: index.handler
-      MemorySize: 1024
+      MemorySize: 2048
       EphemeralStorage:
         Size: 512
       Environment:
@@ -55,19 +57,9 @@ Resources:
       #   GetState:
       #     Type: Api
       #     Properties: { Path: /geo/state, Method: GET }
-    Metadata:
-      # esbuild bundles index.js -> binary-resolver.js -> flatbush into a single
-      # CJS file, inlining flatbush's ESM at build time so the runtime never
-      # require()s an ES module. Geo data is untouched (ships via the layer at
-      # /opt/geo; those buffers are read with fs, never require()d).
-      BuildMethod: esbuild
-      BuildProperties:
-        EntryPoints:
-          - index.js
-        Format: cjs
-        Target: node24
-        Sourcemap: false
-        Minify: false
+      # Build: default Node builder (npm install + copy). src/ is ESM
+      # ("type":"module"), so the handler and binary-resolver use import/export and
+      # flatbush v4 (ESM) is imported natively on nodejs24.x — no esbuild/CJS bundle.
 
 Outputs:
   FunctionArn:
